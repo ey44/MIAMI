@@ -1,0 +1,99 @@
+variable	q equal 4444
+variable        T equal 1073 # Temperature of this run
+variable        a equal 3.165 # lattice parameter as calculated by MD
+
+
+variable        N equal 1 # number of heliums
+variable        foo string heliums_1_w.dat
+
+
+units           metal
+dimension       3
+boundary        p p p
+atom_style      atomic
+atom_modify     map yes
+variable        dt equal 0.001 # 10fs
+variable        runtime equal 1000000 #1ns
+
+
+lattice         bcc $a
+variable        Lx equal 10
+variable        Ly equal 10
+variable        Lz equal 10
+
+region          box block 0 ${Lx} 0 ${Ly} 0 ${Lz}
+create_box      2 box
+create_atoms    1 box
+
+# create voids
+# void 1
+variable vx equal ${Lx}*0.5
+variable vy equal ${Ly}*0.5
+variable vz equal ${Lz}*0.5
+variable vr equal 2*$a
+region void1 sphere ${vx} ${vy} ${vz} ${vr}
+delete_atoms region void1
+
+
+# add in the helium atom
+create_atoms    2 single x y z
+
+# set up masses
+mass 1 183.84
+
+mass 2 4.002602
+
+# the potential files for w ta and he
+#pair_style      eam/fs
+pair_style      hybrid eam/fs table spline 10000 table spline 10000
+pair_coeff      * * eam/fs W_MNB_JPCM17.eam.fs W NULL
+pair_coeff      1 2 table 1 W_He_JW2013.table WHe
+pair_coeff      2 2 table 2 He_He_JW2013.table HeHe
+
+
+
+neighbor        0.3 bin               ## define parameters for neighbor list
+neigh_modify    delay 5               ## define parameters for neighbor list
+
+#-----GROUPS--------------------------------------------------------------------
+group helium type 2
+#group helium dynamic parent every 100
+
+
+#-----COMPUTES------------------------------------------------------------------
+compute     peratom all pe/atom
+compute     eatoms all reduce sum c_peratom
+compute     potential all pe
+compute     t all temp
+compute     helium_msd helium msd com no
+
+#-----THERMO STYLE--------------------------------------------------------------
+timestep        ${dt}
+thermo          10000
+thermo_style    custom step pe c_eatoms c_potential lx ly lz c_t
+dump            2 all custom 50000 atoms.lammp.* id type xs ys zs
+
+#-----MINIMISATION--------------------------------------------------------------
+
+min_style   cg
+minimize    1.0e-12 1.0e-12 10000000 10000000
+
+#-----VARIABLES FOR PRINT-------------------------------------------------------
+variable    time equal (step*${dt})/1000 # in ns
+#group       alloys type 1:2
+variable    msd equal (c_helium_msd[4]) # in A^2
+variable    temperature equal c_t
+
+#-----COEFFICIENT---------------------------------------------------------------
+
+velocity    all create ${T} ${q} mom yes rot yes
+fix         temperature0 all nvt temp ${T} ${T} $(50*dt)
+#fix         ID all temp/rescale 100 ${T} ${T} 0.05 1.0
+fix         1 helium deposit 640 2 10000 ${q} region box attempt 1000 near 0.4
+#fix         pressure all print 100 "${time}, ${msd}, ${temperature}" append ${foo} title "Time (s), MSD(m^2), Temperature (K)"
+run         6400000
+
+print "############################################################"
+print "######################## SIMULATION ########################"
+print "########################### DONE ###########################"
+print "############################################################"
