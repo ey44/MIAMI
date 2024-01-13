@@ -1,0 +1,391 @@
+LAMMPS (23 Jun 2022)
+variable		q equal 444444
+variable        T equal 1073 # Temperature of this run
+variable        a equal 3.165 # lattice parameter as calculated by MD
+
+
+variable        N equal 1 # number of heliums
+variable        foo string heliums_1_w.dat
+variable		d equal 5
+
+
+
+
+units           metal
+dimension       3
+boundary        p p p
+atom_style      atomic
+atom_modify     map yes
+variable        dt equal 0.001 # 10fs
+variable        runtime equal 1000000 #1ns
+
+
+lattice         bcc $a
+lattice         bcc 3.165
+Lattice spacing in x,y,z = 3.165 3.165 3.165
+variable        Lx equal 40
+variable        Ly equal 40
+variable        Lz equal 40
+
+region          box block 0 ${Lx} 0 ${Ly} 0 ${Lz}
+region          box block 0 40 0 ${Ly} 0 ${Lz}
+region          box block 0 40 0 40 0 ${Lz}
+region          box block 0 40 0 40 0 40
+create_box      2 box
+Created orthogonal box = (0 0 0) to (126.6 126.6 126.6)
+  1 by 1 by 1 MPI processor grid
+create_atoms    1 box
+Created 128000 atoms
+  using lattice units in orthogonal box = (0 0 0) to (126.6 126.6 126.6)
+  create_atoms CPU = 0.005 seconds
+
+# create voids
+# void 1
+variable vx equal ${Lx}*0.5
+variable vx equal 40*0.5
+variable vy equal ${Ly}*0.5
+variable vy equal 40*0.5
+variable vz equal ${Lz}*0.5
+variable vz equal 40*0.5
+variable 		vr equal 1
+variable		dr equal ${d}+${vr}
+variable		dr equal 5+${vr}
+variable		dr equal 5+1
+print """
+Void radius: ${vr}
+Distance from void: $d
+Value for simulations check ${dr}
+"""
+
+Void radius: 1
+Distance from void: 5
+Value for simulations check 6
+
+region void1 sphere ${vx} ${vy} ${vz} ${vr}
+region void1 sphere 20 ${vy} ${vz} ${vr}
+region void1 sphere 20 20 ${vz} ${vr}
+region void1 sphere 20 20 20 ${vr}
+region void1 sphere 20 20 20 1
+delete_atoms region void1
+Deleted 12 atoms, new total = 127988
+
+# create sphere of helium bubbles
+variable sx equal (${Lz}*0.5)+${d}*0.5774
+variable sx equal (40*0.5)+${d}*0.5774
+variable sx equal (40*0.5)+5*0.5774
+variable sy equal (${Lz}*0.5)+${d}*0.5774
+variable sy equal (40*0.5)+${d}*0.5774
+variable sy equal (40*0.5)+5*0.5774
+variable sz equal (${Lz}*0.5)+${d}*0.5774
+variable sz equal (40*0.5)+${d}*0.5774
+variable sz equal (40*0.5)+5*0.5774
+variable sr equal 0.1
+region bubble sphere ${sx} ${sy} ${sz} ${sr}
+region bubble sphere 22.887 ${sy} ${sz} ${sr}
+region bubble sphere 22.887 22.887 ${sz} ${sr}
+region bubble sphere 22.887 22.887 22.887 ${sr}
+region bubble sphere 22.887 22.887 22.887 0.1
+
+# set up masses
+mass 1 183.84
+
+mass 2 4.002602
+
+# the potential files for w ta and he
+#pair_style      eam/fs
+pair_style      hybrid eam/fs table spline 10000 table spline 10000
+pair_coeff      * * eam/fs W_MNB_JPCM17.eam.fs W NULL
+pair_coeff      1 2 table 1 W_He_JW2013.table WHe
+Reading pair table potential file W_He_JW2013.table with DATE: 2017-02-20
+WARNING: 3 of 325 force values in table WHe are inconsistent with -dE/dr.
+WARNING:  Should only be flagged at inflection points (src/pair_table.cpp:463)
+pair_coeff      2 2 table 2 He_He_JW2013.table HeHe
+Reading pair table potential file He_He_JW2013.table with DATE: 2017-02-20
+WARNING: 1 of 4999 force values in table HeHe are inconsistent with -dE/dr.
+WARNING:  Should only be flagged at inflection points (src/pair_table.cpp:463)
+
+
+
+neighbor        0.3 bin               ## define parameters for neighbor list
+neigh_modify    delay 5               ## define parameters for neighbor list
+
+#-----GROUPS--------------------------------------------------------------------
+group parent type 2
+0 atoms in group parent
+group helium dynamic parent every 1
+dynamic group helium defined
+
+
+#-----COMPUTES------------------------------------------------------------------
+compute     peratom all pe/atom
+compute     eatoms all reduce sum c_peratom
+compute     potential all pe
+compute     t all temp
+compute 	csym all centro/atom bcc
+compute     hecentre helium com
+
+#-----THERMO STYLE--------------------------------------------------------------
+timestep        ${dt}
+timestep        0.001
+
+reset_timestep	0
+
+thermo 100
+thermo_style custom step pe lx ly lz press pxx pyy pzz c_eatoms
+
+dump 1 all custom 500 dump.relax.1.* id type xs ys zs c_csym
+
+min_style   cg
+minimize    1.0e-15 1.0e-15 10000000 10000000
+WARNING: Using 'neigh_modify every 1 delay 0 check yes' setting during minimization (src/min.cpp:187)
+Neighbor list info ...
+  update every 1 steps, delay 0 steps, check yes
+  max neighbors/atom: 2000, page size: 100000
+  master list distance cutoff = 4.703
+  ghost atom cutoff = 4.703
+  binsize = 2.3515, bins = 54 54 54
+  5 neighbor lists, perpetual/occasional/extra = 4 1 0
+  (1) pair eam/fs, perpetual, skip from (5)
+      attributes: half, newton on
+      pair build: skip
+      stencil: none
+      bin: none
+  (2) pair table, perpetual, skip from (5)
+      attributes: half, newton on
+      pair build: skip
+      stencil: none
+      bin: none
+  (3) pair table, perpetual, skip from (5)
+      attributes: half, newton on
+      pair build: skip
+      stencil: none
+      bin: none
+  (4) compute centro/atom, occasional
+      attributes: full, newton on
+      pair build: full/bin/atomonly
+      stencil: full/bin/3d
+      bin: standard
+  (5) neighbor class addition, perpetual
+      attributes: half, newton on
+      pair build: half/bin/atomonly/newton
+      stencil: half/bin/3d
+      bin: standard
+Per MPI rank memory allocation (min/avg/max) = 97.43 | 97.43 | 97.43 Mbytes
+   Step         PotEng           Lx             Ly             Lz           Press           Pxx            Pyy            Pzz          c_eatoms   
+         0  -1139059        126.6          126.6          126.6          515.57381      515.57381      515.57381      515.57381     -1139059      
+        60  -1139060.4      126.6          126.6          126.6          507.08421      507.08421      507.08421      507.08421     -1139060.4    
+Loop time of 4.48509 on 1 procs for 60 steps with 127988 atoms
+
+80.7% CPU use with 1 MPI tasks x no OpenMP threads
+
+Minimization stats:
+  Stopping criterion = linesearch alpha is zero
+  Energy initial, next-to-last, final = 
+     -1139058.97613084  -1139060.37365658  -1139060.37365658
+  Force two-norm initial, final = 5.1712816 0.0006566047
+  Force max component initial, final = 0.65082991 6.1143511e-06
+  Final line search alpha, max atom move = 0.015625 9.5536736e-08
+  Iterations, force evaluations = 60 131
+
+MPI task timing breakdown:
+Section |  min time  |  avg time  |  max time  |%varavg| %total
+---------------------------------------------------------------
+Pair    | 3.2207     | 3.2207     | 3.2207     |   0.0 | 71.81
+Neigh   | 0.040012   | 0.040012   | 0.040012   |   0.0 |  0.89
+Comm    | 0.013801   | 0.013801   | 0.013801   |   0.0 |  0.31
+Output  | 0          | 0          | 0          |   0.0 |  0.00
+Modify  | 0          | 0          | 0          |   0.0 |  0.00
+Other   |            | 1.211      |            |       | 26.99
+
+Nlocal:         127988 ave      127988 max      127988 min
+Histogram: 1 0 0 0 0 0 0 0 0 0
+Nghost:          25595 ave       25595 max       25595 min
+Histogram: 1 0 0 0 0 0 0 0 0 0
+Neighs:              0 ave           0 max           0 min
+Histogram: 1 0 0 0 0 0 0 0 0 0
+FullNghs:  3.32748e+06 ave 3.32748e+06 max 3.32748e+06 min
+Histogram: 1 0 0 0 0 0 0 0 0 0
+
+Total # of neighbors = 3327476
+Ave neighs/atom = 25.998344
+Neighbor list builds = 2
+Dangerous builds = 0
+
+run 0
+WARNING: No fixes with time integration, atoms won't move (src/verlet.cpp:60)
+Per MPI rank memory allocation (min/avg/max) = 88.44 | 88.44 | 88.44 Mbytes
+   Step         PotEng           Lx             Ly             Lz           Press           Pxx            Pyy            Pzz          c_eatoms   
+        60  -1139060.4      126.6          126.6          126.6          507.08421      507.08421      507.08421      507.08421     -1139060.4    
+Loop time of 4.17e-07 on 1 procs for 0 steps with 127988 atoms
+
+479.6% CPU use with 1 MPI tasks x no OpenMP threads
+
+MPI task timing breakdown:
+Section |  min time  |  avg time  |  max time  |%varavg| %total
+---------------------------------------------------------------
+Pair    | 0          | 0          | 0          |   0.0 |  0.00
+Neigh   | 0          | 0          | 0          |   0.0 |  0.00
+Comm    | 0          | 0          | 0          |   0.0 |  0.00
+Output  | 0          | 0          | 0          |   0.0 |  0.00
+Modify  | 0          | 0          | 0          |   0.0 |  0.00
+Other   |            | 4.17e-07   |            |       |100.00
+
+Nlocal:         127988 ave      127988 max      127988 min
+Histogram: 1 0 0 0 0 0 0 0 0 0
+Nghost:          25595 ave       25595 max       25595 min
+Histogram: 1 0 0 0 0 0 0 0 0 0
+Neighs:              0 ave           0 max           0 min
+Histogram: 1 0 0 0 0 0 0 0 0 0
+FullNghs:  3.32748e+06 ave 3.32748e+06 max 3.32748e+06 min
+Histogram: 1 0 0 0 0 0 0 0 0 0
+
+Total # of neighbors = 3327476
+Ave neighs/atom = 25.998344
+Neighbor list builds = 0
+Dangerous builds = 0
+undump 1
+
+# variable N equal count(all), counts the total number of atoms in the cell
+# the total number of atoms is stored to the variable N
+
+variable N equal count(all)
+variable No equal $N
+variable No equal 127988
+
+# variable Ei equal "c_eatoms" computes the initial energy of the cell system before the vacancy
+# E is needed to store the initial energy of the system to the variable Ei
+
+variable E equal "c_eatoms"
+variable Ei equal $E
+variable Ei equal -1139060.37365652
+
+
+#-----ADD He ATOM---------------------------------------------------------------
+# add in the helium atom(s)
+create_atoms    2 random 1 ${q} bubble
+create_atoms    2 random 1 444444 bubble
+Created 1 atoms
+  using lattice units in orthogonal box = (0 0 0) to (126.6 126.6 126.6)
+  create_atoms CPU = 0.000 seconds
+
+group h type 2
+1 atoms in group h
+
+reset_timestep	0
+
+thermo 100
+thermo_style custom step pe lx ly lz press pxx pyy pzz c_eatoms c_hecentre[1] c_hecentre[2] c_hecentre[3]
+
+dump 2 all custom 500 dump.relax.2.* id type xs ys zs c_csym
+
+min_style cg
+minimize 1e-15 1e-15 5000 5000
+WARNING: Using 'neigh_modify every 1 delay 0 check yes' setting during minimization (src/min.cpp:187)
+Per MPI rank memory allocation (min/avg/max) = 99.69 | 99.69 | 99.69 Mbytes
+   Step         PotEng           Lx             Ly             Lz           Press           Pxx            Pyy            Pzz          c_eatoms    c_hecentre[1]  c_hecentre[2]  c_hecentre[3] 
+         0  -1138850        126.6          126.6          126.6          675.93566      616.78271      807.36178      603.66249     -1138850        0              0              0            
+        90  -1139054.2      126.6          126.6          126.6          518.26758      516.61323      519.09241      519.09711     -1139054.2      0              0              0            
+Loop time of 5.90615 on 1 procs for 90 steps with 127989 atoms
+
+88.3% CPU use with 1 MPI tasks x no OpenMP threads
+
+Minimization stats:
+  Stopping criterion = linesearch alpha is zero
+  Energy initial, next-to-last, final = 
+       -1138850.021035  -1139054.23586858  -1139054.23586858
+  Force two-norm initial, final = 1523.6575 0.00091250709
+  Force max component initial, final = 834.3689 0.0002645556
+  Final line search alpha, max atom move = 0.0078125 2.0668406e-06
+  Iterations, force evaluations = 90 185
+
+MPI task timing breakdown:
+Section |  min time  |  avg time  |  max time  |%varavg| %total
+---------------------------------------------------------------
+Pair    | 4.5283     | 4.5283     | 4.5283     |   0.0 | 76.67
+Neigh   | 0.19698    | 0.19698    | 0.19698    |   0.0 |  3.34
+Comm    | 0.027252   | 0.027252   | 0.027252   |   0.0 |  0.46
+Output  | 0          | 0          | 0          |   0.0 |  0.00
+Modify  | 0          | 0          | 0          |   0.0 |  0.00
+Other   |            | 1.154      |            |       | 19.53
+
+Nlocal:         127989 ave      127989 max      127989 min
+Histogram: 1 0 0 0 0 0 0 0 0 0
+Nghost:          25595 ave       25595 max       25595 min
+Histogram: 1 0 0 0 0 0 0 0 0 0
+Neighs:              0 ave           0 max           0 min
+Histogram: 1 0 0 0 0 0 0 0 0 0
+FullNghs:  3.32749e+06 ave 3.32749e+06 max 3.32749e+06 min
+Histogram: 1 0 0 0 0 0 0 0 0 0
+
+Total # of neighbors = 3327492
+Ave neighs/atom = 25.998265
+Neighbor list builds = 10
+Dangerous builds = 0
+
+# variable Ef equal "c_eatoms" computes the final energy of the cell system after the vacancy
+# The final energy is stored to the variable Ef
+
+variable Ef equal "c_eatoms"
+variable Ehe equal ${Ef}-((${No}+1)/(${No})*${Ei})
+variable Ehe equal -1139054.23586853-((${No}+1)/(${No})*${Ei})
+variable Ehe equal -1139054.23586853-((127988+1)/(${No})*${Ei})
+variable Ehe equal -1139054.23586853-((127988+1)/(127988)*${Ei})
+variable Ehe equal -1139054.23586853-((127988+1)/(127988)*-1139060.37365652)
+#variable x_he equal xcm(hecentre,x)
+#variable final_centre equal "c_hecentre"
+variable posX equal xcm(h,x)
+variable posY equal xcm(h,y)
+variable posZ equal xcm(h,z)
+
+variable intX equal ${posX}
+variable intX equal 71.9936410058401
+variable intY equal ${posY}
+variable intY equal 71.2078512135177
+variable intZ equal ${posZ}
+variable intZ equal 72.7816276486912
+
+variable intX2 equal ${intX}*${intX}
+variable intX2 equal 71.9936410058401*${intX}
+variable intX2 equal 71.9936410058401*71.9936410058401
+variable intY2 equal ${intY}*${intY}
+variable intY2 equal 71.2078512135177*${intY}
+variable intY2 equal 71.2078512135177*71.2078512135177
+variable intZ2 equal ${intZ}*${intZ}
+variable intZ2 equal 72.7816276486912*${intZ}
+variable intZ2 equal 72.7816276486912*72.7816276486912
+
+variable distance equal sqrt((${intX2}+${intY2}+${intZ2}))
+variable distance equal sqrt((5183.08434527778+${intY2}+${intZ2}))
+variable distance equal sqrt((5183.08434527778+5070.55807444647+${intZ2}))
+variable distance equal sqrt((5183.08434527778+5070.55807444647+5297.16532319273))
+
+
+
+#variable y_he equal "c_hecentre[1]"
+#variable z_he equal "c_hecentre[1]"
+
+print "Total number of atoms = ${No}"
+Total number of atoms = 127988
+print "Initial energy of atoms = ${Ei}"
+Initial energy of atoms = -1139060.37365652
+print "Final energy of atoms = ${Ef}"
+Final energy of atoms = -1139054.23586853
+print "Helium attraction energy = ${Ehe}"
+Helium attraction energy = 15.0375315099955
+print "He location is (${posX}, ${posY}, ${posZ})"
+He location is (71.9936410058401, 71.2078512135177, 72.7816276486912)
+print "Starting d_r value is: ${dr} with a sudo_random seed of ${q}"
+Starting d_r value is: 6 with a sudo_random seed of 444444
+
+print "${q}, ${dr}, ${posX}, ${posY}, ${posZ}, ${Ehe}, ${Ef}, ${Ei}, ${No}" append he_ms1.csv
+444444, 6, 71.9936410058401, 71.2078512135177, 72.7816276486912, 15.0375315099955, -1139054.23586853, -1139060.37365652, 127988
+
+print "############################################################"
+############################################################
+print "######################## SIMULATION ########################"
+######################## SIMULATION ########################
+print "########################### DONE ###########################"
+########################### DONE ###########################
+print "############################################################"
+############################################################
+Total wall time: 0:00:12

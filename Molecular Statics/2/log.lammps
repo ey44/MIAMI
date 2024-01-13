@@ -1,0 +1,245 @@
+LAMMPS (23 Jun 2022)
+variable		q equal 44444
+variable        T equal 1073 # Temperature of this run
+variable        a equal 3.165 # lattice parameter as calculated by MD
+
+
+variable        N equal 1 # number of heliums
+variable        foo string heliums_1_w.dat
+variable		d equal 5.7
+
+
+
+
+units           metal
+dimension       3
+boundary        p p p
+atom_style      atomic
+atom_modify     map yes
+variable        dt equal 0.001 # 10fs
+variable        runtime equal 1000000 #1ns
+
+
+lattice         bcc $a
+lattice         bcc 3.165
+Lattice spacing in x,y,z = 3.165 3.165 3.165
+variable        Lx equal 40
+variable        Ly equal 40
+variable        Lz equal 40
+
+region          box block 0 ${Lx} 0 ${Ly} 0 ${Lz}
+region          box block 0 40 0 ${Ly} 0 ${Lz}
+region          box block 0 40 0 40 0 ${Lz}
+region          box block 0 40 0 40 0 40
+create_box      2 box
+Created orthogonal box = (0 0 0) to (126.6 126.6 126.6)
+  1 by 1 by 1 MPI processor grid
+create_atoms    1 box
+Created 128000 atoms
+  using lattice units in orthogonal box = (0 0 0) to (126.6 126.6 126.6)
+  create_atoms CPU = 0.005 seconds
+
+# create voids
+# void 1
+variable vx equal ${Lx}*0.5
+variable vx equal 40*0.5
+variable vy equal ${Ly}*0.5
+variable vy equal 40*0.5
+variable vz equal ${Lz}*0.5
+variable vz equal 40*0.5
+variable 		vr equal 2
+variable		dr equal ${d}+${vr}
+variable		dr equal 5.7+${vr}
+variable		dr equal 5.7+2
+print """
+Void radius: ${vr}
+Distance from void: $d
+Value for simulations check ${dr}
+"""
+
+Void radius: 2
+Distance from void: 5.7
+Value for simulations check 7.7
+
+region void1 sphere ${vx} ${vy} ${vz} ${vr}
+region void1 sphere 20 ${vy} ${vz} ${vr}
+region void1 sphere 20 20 ${vz} ${vr}
+region void1 sphere 20 20 20 ${vr}
+region void1 sphere 20 20 20 2
+delete_atoms region void1
+Deleted 65 atoms, new total = 127935
+
+# create sphere of helium bubbles
+variable sx equal (${Lz}*0.5)+${d}*0.5774
+variable sx equal (40*0.5)+${d}*0.5774
+variable sx equal (40*0.5)+5.7*0.5774
+variable sy equal (${Lz}*0.5)+${d}*0.5774
+variable sy equal (40*0.5)+${d}*0.5774
+variable sy equal (40*0.5)+5.7*0.5774
+variable sz equal (${Lz}*0.5)+${d}*0.5774
+variable sz equal (40*0.5)+${d}*0.5774
+variable sz equal (40*0.5)+5.7*0.5774
+variable sr equal 0.1
+region bubble sphere ${sx} ${sy} ${sz} ${sr}
+region bubble sphere 23.29118 ${sy} ${sz} ${sr}
+region bubble sphere 23.29118 23.29118 ${sz} ${sr}
+region bubble sphere 23.29118 23.29118 23.29118 ${sr}
+region bubble sphere 23.29118 23.29118 23.29118 0.1
+
+# set up masses
+mass 1 183.84
+
+mass 2 4.002602
+
+# the potential files for w ta and he
+#pair_style      eam/fs
+pair_style      hybrid eam/fs table spline 10000 table spline 10000
+pair_coeff      * * eam/fs W_MNB_JPCM17.eam.fs W NULL
+pair_coeff      1 2 table 1 W_He_JW2013.table WHe
+Reading pair table potential file W_He_JW2013.table with DATE: 2017-02-20
+WARNING: 3 of 325 force values in table WHe are inconsistent with -dE/dr.
+WARNING:  Should only be flagged at inflection points (src/pair_table.cpp:463)
+pair_coeff      2 2 table 2 He_He_JW2013.table HeHe
+Reading pair table potential file He_He_JW2013.table with DATE: 2017-02-20
+WARNING: 1 of 4999 force values in table HeHe are inconsistent with -dE/dr.
+WARNING:  Should only be flagged at inflection points (src/pair_table.cpp:463)
+
+
+
+neighbor        0.3 bin               ## define parameters for neighbor list
+neigh_modify    delay 5               ## define parameters for neighbor list
+
+#-----GROUPS--------------------------------------------------------------------
+group parent type 2
+0 atoms in group parent
+group helium dynamic parent every 1
+dynamic group helium defined
+
+
+#-----COMPUTES------------------------------------------------------------------
+compute     peratom all pe/atom
+compute     eatoms all reduce sum c_peratom
+compute     potential all pe
+compute     t all temp
+compute 	csym all centro/atom bcc
+compute     hecentre helium com
+
+#-----THERMO STYLE--------------------------------------------------------------
+timestep        ${dt}
+timestep        0.001
+
+reset_timestep	0
+
+thermo 100
+thermo_style custom step pe lx ly lz press pxx pyy pzz c_eatoms
+
+dump 1 all custom 500 dump.relax.1.* id type xs ys zs c_csym
+
+min_style   cg
+minimize    1.0e-15 1.0e-15 10000000 10000000
+WARNING: Using 'neigh_modify every 1 delay 0 check yes' setting during minimization (src/min.cpp:187)
+Neighbor list info ...
+  update every 1 steps, delay 0 steps, check yes
+  max neighbors/atom: 2000, page size: 100000
+  master list distance cutoff = 4.703
+  ghost atom cutoff = 4.703
+  binsize = 2.3515, bins = 54 54 54
+  5 neighbor lists, perpetual/occasional/extra = 4 1 0
+  (1) pair eam/fs, perpetual, skip from (5)
+      attributes: half, newton on
+      pair build: skip
+      stencil: none
+      bin: none
+  (2) pair table, perpetual, skip from (5)
+      attributes: half, newton on
+      pair build: skip
+      stencil: none
+      bin: none
+  (3) pair table, perpetual, skip from (5)
+      attributes: half, newton on
+      pair build: skip
+      stencil: none
+      bin: none
+  (4) compute centro/atom, occasional
+      attributes: full, newton on
+      pair build: full/bin/atomonly
+      stencil: full/bin/3d
+      bin: standard
+  (5) neighbor class addition, perpetual
+      attributes: half, newton on
+      pair build: half/bin/atomonly/newton
+      stencil: half/bin/3d
+      bin: standard
+Per MPI rank memory allocation (min/avg/max) = 97.43 | 97.43 | 97.43 Mbytes
+   Step         PotEng           Lx             Ly             Lz           Press           Pxx            Pyy            Pzz          c_eatoms   
+         0  -1138512        126.6          126.6          126.6          383.70783      383.70783      383.70783      383.70783     -1138512      
+        60  -1138516.4      126.6          126.6          126.6          352.40098      352.40098      352.40098      352.40098     -1138516.4    
+Loop time of 3.90696 on 1 procs for 60 steps with 127935 atoms
+
+97.1% CPU use with 1 MPI tasks x no OpenMP threads
+
+Minimization stats:
+  Stopping criterion = linesearch alpha is zero
+  Energy initial, next-to-last, final = 
+     -1138511.98862142  -1138516.36433036  -1138516.36433036
+  Force two-norm initial, final = 10.043608 0.0014599571
+  Force max component initial, final = 0.54454751 1.9651413e-05
+  Final line search alpha, max atom move = 0.00390625 7.6763331e-08
+  Iterations, force evaluations = 60 135
+
+MPI task timing breakdown:
+Section |  min time  |  avg time  |  max time  |%varavg| %total
+---------------------------------------------------------------
+Pair    | 3.3554     | 3.3554     | 3.3554     |   0.0 | 85.88
+Neigh   | 0.063383   | 0.063383   | 0.063383   |   0.0 |  1.62
+Comm    | 0.0161     | 0.0161     | 0.0161     |   0.0 |  0.41
+Output  | 0          | 0          | 0          |   0.0 |  0.00
+Modify  | 0          | 0          | 0          |   0.0 |  0.00
+Other   |            | 0.4721     |            |       | 12.08
+
+Nlocal:         127935 ave      127935 max      127935 min
+Histogram: 1 0 0 0 0 0 0 0 0 0
+Nghost:          25595 ave       25595 max       25595 min
+Histogram: 1 0 0 0 0 0 0 0 0 0
+Neighs:              0 ave           0 max           0 min
+Histogram: 1 0 0 0 0 0 0 0 0 0
+FullNghs:  3.32561e+06 ave 3.32561e+06 max 3.32561e+06 min
+Histogram: 1 0 0 0 0 0 0 0 0 0
+
+Total # of neighbors = 3325612
+Ave neighs/atom = 25.994544
+Neighbor list builds = 3
+Dangerous builds = 1
+
+run 0
+WARNING: No fixes with time integration, atoms won't move (src/verlet.cpp:60)
+Per MPI rank memory allocation (min/avg/max) = 88.44 | 88.44 | 88.44 Mbytes
+   Step         PotEng           Lx             Ly             Lz           Press           Pxx            Pyy            Pzz          c_eatoms   
+        60  -1138516.4      126.6          126.6          126.6          352.40098      352.40098      352.40098      352.40098     -1138516.4    
+Loop time of 5e-07 on 1 procs for 0 steps with 127935 atoms
+
+200.0% CPU use with 1 MPI tasks x no OpenMP threads
+
+MPI task timing breakdown:
+Section |  min time  |  avg time  |  max time  |%varavg| %total
+---------------------------------------------------------------
+Pair    | 0          | 0          | 0          |   0.0 |  0.00
+Neigh   | 0          | 0          | 0          |   0.0 |  0.00
+Comm    | 0          | 0          | 0          |   0.0 |  0.00
+Output  | 0          | 0          | 0          |   0.0 |  0.00
+Modify  | 0          | 0          | 0          |   0.0 |  0.00
+Other   |            | 5e-07      |            |       |100.00
+
+Nlocal:         127935 ave      127935 max      127935 min
+Histogram: 1 0 0 0 0 0 0 0 0 0
+Nghost:          25595 ave       25595 max       25595 min
+Histogram: 1 0 0 0 0 0 0 0 0 0
+Neighs:              0 ave           0 max           0 min
+Histogram: 1 0 0 0 0 0 0 0 0 0
+FullNghs:  3.32561e+06 ave 3.32561e+06 max 3.32561e+06 min
+Histogram: 1 0 0 0 0 0 0 0 0 0
+
+Total # of neighbors = 3325612
+Ave neighs/atom = 25.994544
+Neighbor list builds = 0
+Dangerous builds = 0

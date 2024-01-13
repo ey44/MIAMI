@@ -1,0 +1,21 @@
+#!/bin/bash
+
+
+# Values for d
+d_start=0
+d_end=7
+d_step=0.1
+
+# Values for q
+q_values=(44 444 4444 44444 444444)
+
+for d in $(seq ${d_start} ${d_step} ${d_end}); do
+    for q_value in "${q_values[@]}"; do
+        input_file="input_d${d}_q${q_value}.lammps"
+        echo "Running simulation for $input_file"
+        sed -e "s/D_VALUE/${d}/g" -e "s/Q_VALUE/${q_value}/g" in.ms110 > input_d${d}_q${q}.ms110
+        lmp_serial -in input_d${d}_q${q}.ms110
+done
+    done
+done
+

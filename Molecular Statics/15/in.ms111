@@ -1,0 +1,166 @@
+variable		q equal Q_VALUE
+variable        T equal 1073 # Temperature of this run
+variable        a equal 3.165 # lattice parameter as calculated by MD
+
+
+variable        N equal 1 # number of heliums
+variable        foo string heliums_1_w.dat
+variable		d equal D_VALUE
+
+
+
+
+units           metal
+dimension       3
+boundary        p p p
+atom_style      atomic
+atom_modify     map yes
+variable        dt equal 0.001 # 10fs
+variable        runtime equal 1000000 #1ns
+
+
+lattice         bcc $a
+variable        Lx equal 40
+variable        Ly equal 40
+variable        Lz equal 40
+
+region          box block 0 ${Lx} 0 ${Ly} 0 ${Lz}
+create_box      2 box
+create_atoms    1 box
+
+# create voids
+# void 1
+variable vx equal ${Lx}*0.5
+variable vy equal ${Ly}*0.5
+variable vz equal ${Lz}*0.5
+variable 		vr equal 1.5
+variable		dr equal ${d}+${vr}
+print """
+Void radius: ${vr}
+Distance from void: $d
+Value for simulations check ${dr}
+"""
+region void1 sphere ${vx} ${vy} ${vz} ${vr}
+delete_atoms region void1
+
+# create sphere of helium bubbles
+variable sx equal (${Lz}*0.5)+${d}*0.5774
+variable sy equal (${Lz}*0.5)+${d}*0.5774
+variable sz equal (${Lz}*0.5)+${d}*0.5774
+variable sr equal 0.1
+region bubble sphere ${sx} ${sy} ${sz} ${sr}
+
+# set up masses
+mass 1 183.84
+
+mass 2 4.002602
+
+# the potential files for w ta and he
+#pair_style      eam/fs
+pair_style      hybrid eam/fs table spline 10000 table spline 10000
+pair_coeff      * * eam/fs W_MNB_JPCM17.eam.fs W NULL
+pair_coeff      1 2 table 1 W_He_JW2013.table WHe
+pair_coeff      2 2 table 2 He_He_JW2013.table HeHe
+
+
+
+neighbor        0.3 bin               ## define parameters for neighbor list
+neigh_modify    delay 5               ## define parameters for neighbor list
+
+#-----GROUPS--------------------------------------------------------------------
+group parent type 2
+group helium dynamic parent every 1
+
+
+#-----COMPUTES------------------------------------------------------------------
+compute     peratom all pe/atom
+compute     eatoms all reduce sum c_peratom
+compute     potential all pe
+compute     t all temp
+compute 	csym all centro/atom bcc
+compute     hecentre helium com
+
+#-----THERMO STYLE--------------------------------------------------------------
+timestep        ${dt}
+
+reset_timestep	0
+
+thermo 100
+thermo_style custom step pe lx ly lz press pxx pyy pzz c_eatoms 
+
+dump 1 all custom 500 dump.relax.1.* id type xs ys zs c_csym
+
+min_style   cg
+minimize    1.0e-15 1.0e-15 10000000 10000000
+
+run 0
+undump 1
+
+# variable N equal count(all), counts the total number of atoms in the cell
+# the total number of atoms is stored to the variable N
+
+variable N equal count(all)
+variable No equal $N
+
+# variable Ei equal "c_eatoms" computes the initial energy of the cell system before the vacancy
+# E is needed to store the initial energy of the system to the variable Ei
+
+variable E equal "c_eatoms"
+variable Ei equal $E
+
+
+#-----ADD He ATOM---------------------------------------------------------------
+# add in the helium atom(s)
+create_atoms    2 random 1 ${q} bubble
+
+group h type 2
+
+reset_timestep	0
+
+thermo 100
+thermo_style custom step pe lx ly lz press pxx pyy pzz c_eatoms c_hecentre[1] c_hecentre[2] c_hecentre[3]
+
+dump 2 all custom 500 dump.relax.2.* id type xs ys zs c_csym
+
+min_style cg
+minimize 1e-15 1e-15 5000 5000
+
+# variable Ef equal "c_eatoms" computes the final energy of the cell system after the vacancy
+# The final energy is stored to the variable Ef 
+
+variable Ef equal "c_eatoms"
+variable Ehe equal ${Ef}-((${No}+1)/(${No})*${Ei})
+#variable x_he equal xcm(hecentre,x)
+#variable final_centre equal "c_hecentre"
+variable posX equal xcm(h,x)
+variable posY equal xcm(h,y)
+variable posZ equal xcm(h,z)
+
+variable intX equal ${posX}
+variable intY equal ${posY}
+variable intZ equal ${posZ}
+
+variable intX2 equal ${intX}*${intX}
+variable intY2 equal ${intY}*${intY}
+variable intZ2 equal ${intZ}*${intZ}
+
+variable distance equal sqrt((${intX2}+${intY2}+${intZ2}))
+
+
+
+#variable y_he equal "c_hecentre[1]"
+#variable z_he equal "c_hecentre[1]"
+
+print "Total number of atoms = ${No}"
+print "Initial energy of atoms = ${Ei}"
+print "Final energy of atoms = ${Ef}"
+print "Helium attraction energy = ${Ehe}"
+print "He location is (${posX}, ${posY}, ${posZ})"
+print "Starting d_r value is: ${dr} with a sudo_random seed of ${q}"
+
+print "${q}, ${dr}, ${posX}, ${posY}, ${posZ}, ${Ehe}, ${Ef}, ${Ei}, ${No}" append he_ms1.csv
+
+print "############################################################"
+print "######################## SIMULATION ########################"
+print "########################### DONE ###########################"
+print "############################################################"
